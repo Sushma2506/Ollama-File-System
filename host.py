@@ -63,7 +63,7 @@ class MCPClient:
             {
                 "name": tool.name,
                 "description": tool.description,
-                "input_schema": tool.inputSchema,
+                "parameters": tool.inputSchema,
             }
             for tool in response.tools
         ]

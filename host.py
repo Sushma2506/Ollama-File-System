@@ -1,5 +1,6 @@
+import os
 import asyncio  # for async/await
-from ollama import AsyncClient, Client
+from ollama import AsyncClient
 from contextlib import AsyncExitStack
 from typing import Optional
 from mcp import ClientSession, StdioServerParameters  # for MCP client
@@ -17,6 +18,9 @@ class MCPClient:
             AsyncExitStack()
         )  # AsyncExitStack exits everything like say bye then awaits response from server then closes
         self.ollama = AsyncClient()
+        self.BASE_PATH = os.path.expanduser(
+            "~"
+        )  # os.path.expanduser("~") is a Python built-in that automatically finds the current user's home directory!
 
     async def connect_to_server(self):
         # step 1 - define server params
@@ -25,7 +29,7 @@ class MCPClient:
             args=[
                 "-y",
                 "@modelcontextprotocol/server-filesystem",
-                "C:/Users/username/folder_you_want_agent_to_access",
+                self.BASE_PATH,
             ],
             env=None,
         )
@@ -56,14 +60,23 @@ class MCPClient:
 
     async def process_query(self, query):
         # step 1 - prepare messages
-        messages = [{"role": "user", "content": query}]
+        messages = [
+            {
+                "role": "system",
+                "content": f'You have filesystem access. Base directory is {self.BASE_PATH}. When user mentions a folder like Documents, Desktop etc, use full path like {self.BASE_PATH}/Documents. Always use full paths."',
+            },
+            {"role": "user", "content": query},
+        ]
         # step 2 - get available tools
         response = await self.session.list_tools()
         available_tools = [
             {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.inputSchema,
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.inputSchema,
+                },
             }
             for tool in response.tools
         ]
@@ -75,24 +88,31 @@ class MCPClient:
 
         # step 4 - process response
         if response.message.tool_calls:
-            tool_call = response.message.tool_calls[0]
-            tool_name = tool_call.function.name
-            tool_args = tool_call.function.arguments
-            print("i am here before printing ollama called")
-            # printing which tool ollama wants to use and with what arguments (human-in-loop (HIL))
-            print(f"ollama called {tool_name}")
-            print(f"With arguments: {tool_args}")
-            answer = input("Allow or deny? (allow/deny): ")
-            if answer == "allow":
-                result = await self.session.call_tool(tool_name, tool_args)
-                messages.append({"role": "tool", "content": str(result.content)})
+            for tools in response.message.tool_calls:
+                print(tools)
+                tool_name = tools.function.name
+                tool_args = tools.function.arguments
+                # printing which tool ollama wants to use and with what arguments (human-in-loop (HIL))
+                print(f"ollama called {tool_name}")
+                print(f"With arguments: {tool_args}")
+                answer = input("Allow or deny? (allow/deny): ")
+                if answer == "allow":
+                    result = await self.session.call_tool(tool_name, tool_args)
+                    messages.append({"role": "tool", "content": str(result.content)})
 
-                final_response = await self.ollama.chat(
-                    model="llama3.1", messages=messages
-                )
-                return final_response.message.content
-            else:
-                return response.message.content
+                    result = await self.ollama.chat(model="llama3.1", messages=messages)
+
+                else:
+                    messages.append(
+                        {"role": "tool", "content": "Tool execution denied by user"}
+                    )
+
+            # after ALL tools processed
+            final_response = await self.ollama.chat(model="llama3.1", messages=messages)
+            return final_response.message.content
+
+        else:
+            return response.message.content  # no tools needed
 
     async def chat_loop(self):
         """Run an interactive chat loop"""

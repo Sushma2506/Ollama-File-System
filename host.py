@@ -25,7 +25,7 @@ class MCPClient:
             args=[
                 "-y",
                 "@modelcontextprotocol/server-filesystem",
-                "C:/Users/saira/Documents",
+                "C:/Users/username/folder_you_want_agent_to_access",
             ],
             env=None,
         )

@@ -98,10 +98,23 @@ class MCPClient:
                 answer = input("Allow or deny? (allow/deny): ")
                 if answer == "allow":
                     result = await self.session.call_tool(tool_name, tool_args)
+                    read_tools = [
+                        "read_file",
+                        "read_text_file",
+                        "list_directory",
+                        "directory_tree",
+                        "get_file_info",
+                        "search_files",
+                        "list_directory_with_sizes",
+                        "list_allowed_directories",
+                        "read_multiple_files",
+                        "read_media_file",
+                    ]
+
+                    if tool_name in read_tools:
+                        print(f"\n📄 Result:")
+                        print(result.content)
                     messages.append({"role": "tool", "content": str(result.content)})
-
-                    result = await self.ollama.chat(model="llama3.1", messages=messages)
-
                 else:
                     messages.append(
                         {"role": "tool", "content": "Tool execution denied by user"}
